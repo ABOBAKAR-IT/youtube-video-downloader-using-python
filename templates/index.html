@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YT Downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="white" width="20" height="20">
+          <path d="M21.593 7.203a2.506 2.506 0 0 0-1.762-1.766C18.265 5.007 12 5 12 5s-6.264-.007-7.831.44a2.56 2.56 0 0 0-1.766 1.778c-.44 1.568-.44 4.783-.44 4.783s0 3.215.44 4.781a2.56 2.56 0 0 0 1.766 1.778C5.736 19 12 19 12 19s6.265 0 7.831-.44a2.506 2.506 0 0 0 1.762-1.767c.44-1.566.44-4.78.44-4.78s0-3.217-.44-4.81zM9.996 15.005V8.995l5.207 3.006-5.207 3.004z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-title">YT Downloader</div>
+        <div class="logo-sub">High Quality · Fast</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-view="downloader">
+        <i class="ti ti-download"></i> Downloader
+      </a>
+      <a href="#" class="nav-item" data-view="files">
+        <i class="ti ti-folder"></i> My Files
+      </a>
+      <a href="#" class="nav-item" data-view="settings">
+        <i class="ti ti-settings"></i> Settings
+      </a>
+    </nav>
+
+    <div class="sidebar-stats">
+      <div class="sstat">
+        <span class="sstat-val" id="ss-total">0</span>
+        <span class="sstat-lbl">Total</span>
+      </div>
+      <div class="sstat">
+        <span class="sstat-val done" id="ss-done">0</span>
+        <span class="sstat-lbl">Done</span>
+      </div>
+      <div class="sstat">
+        <span class="sstat-val active" id="ss-active">0</span>
+        <span class="sstat-lbl">Active</span>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <span id="conn-dot" class="conn-dot offline"></span>
+      <span id="conn-label">Connecting…</span>
+    </div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- ══ View: Downloader ══════════════════════════════════════ -->
+    <div id="view-downloader" class="view active">
+
+      <!-- URL input card -->
+      <div class="card input-card">
+        <div class="card-label"><i class="ti ti-link"></i> Add URL</div>
+
+        <div class="url-row">
+          <div class="url-field-wrap">
+            <i class="ti ti-brand-youtube url-icon"></i>
+            <input id="urlInput" class="url-input" type="text"
+              placeholder="https://youtube.com/watch?v=... or playlist URL" />
+            <button class="btn-clear" id="clearBtn" onclick="clearUrl()" title="Clear">
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+          <button class="btn btn-ghost" id="infoBtn" onclick="fetchInfo()">
+            <i class="ti ti-info-circle"></i> Info
+          </button>
+          <button class="btn btn-primary" id="addBtn" onclick="addDownload()">
+            <i class="ti ti-download"></i> Download
+          </button>
+        </div>
+
+        <!-- Info preview (shown after fetching) -->
+        <div id="infoPreview" class="info-preview hidden">
+          <img id="infoThumb" class="info-thumb" src="" alt="" />
+          <div class="info-details">
+            <div class="info-title" id="infoTitle"></div>
+            <div class="info-meta">
+              <span id="infoUploader"></span>
+              <span id="infoDuration"></span>
+              <span id="infoViews"></span>
+              <span id="infoCount" class="playlist-pill"></span>
+            </div>
+            <div class="info-qualities" id="infoQualities"></div>
+          </div>
+        </div>
+
+        <!-- Options row -->
+        <div class="options-row">
+          <div class="opt-group">
+            <div class="opt-label">Format</div>
+            <div class="toggle-group">
+              <button class="toggle active" id="togVideo" onclick="setType('video')">
+                <i class="ti ti-video"></i> MP4
+              </button>
+              <button class="toggle" id="togAudio" onclick="setType('audio')">
+                <i class="ti ti-music"></i> MP3
+              </button>
+            </div>
+          </div>
+
+          <div class="opt-group" id="qualGroup">
+            <div class="opt-label">Quality</div>
+            <select class="sel" id="qualSel">
+              <option value="2160">4K — 2160p</option>
+              <option value="1440">1440p</option>
+              <option value="1080" selected>1080p HD</option>
+              <option value="720">720p</option>
+              <option value="480">480p</option>
+              <option value="360">360p</option>
+            </select>
+          </div>
+
+          <div class="opt-group">
+            <div class="opt-label">Extras</div>
+            <div class="check-row">
+              <label class="chk-label">
+                <input type="checkbox" id="chkSubs" />
+                <span><i class="ti ti-letter-case"></i> Subtitles</span>
+              </label>
+              <label class="chk-label">
+                <input type="checkbox" id="chkThumb" />
+                <span><i class="ti ti-photo"></i> Thumbnail</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Queue -->
+      <div class="queue-header">
+        <div class="queue-title">
+          <i class="ti ti-list"></i> Download Queue
+          <span class="queue-count" id="queueCount">0</span>
+        </div>
+        <div class="queue-actions">
+          <button class="btn btn-ghost btn-sm" id="dlAllBtn" onclick="downloadAll()" disabled>
+            <i class="ti ti-player-play"></i> Start All
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="clearDone()">
+            <i class="ti ti-eraser"></i> Clear Done
+          </button>
+        </div>
+      </div>
+
+      <div id="queue" class="queue"></div>
+
+      <div id="emptyState" class="empty-state">
+        <i class="ti ti-brand-youtube"></i>
+        <p>Paste a YouTube URL above and hit <strong>Download</strong></p>
+        <p class="empty-sub">Supports single videos, playlists, and Shorts</p>
+      </div>
+
+    </div>
+
+    <!-- ══ View: Files ══════════════════════════════════════════ -->
+    <div id="view-files" class="view">
+      <div class="page-header">
+        <h2>Downloaded Files</h2>
+        <button class="btn btn-ghost btn-sm" onclick="loadFiles()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="filesList" class="files-list">
+        <div class="empty-state">
+          <i class="ti ti-folder-open"></i>
+          <p>No files yet</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ View: Settings ════════════════════════════════════════ -->
+    <div id="view-settings" class="view">
+      <div class="page-header"><h2>Settings</h2></div>
+      <div class="settings-grid">
+        <div class="card settings-card">
+          <div class="card-label"><i class="ti ti-folder"></i> Download Folder</div>
+          <div class="settings-row">
+            <div class="settings-path" id="dlPath">./downloads/</div>
+            <button class="btn btn-ghost btn-sm" onclick="alert('Change folder not available in browser mode.')">Browse</button>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="card-label"><i class="ti ti-adjustments"></i> Default Quality</div>
+          <select class="sel" id="defaultQual" onchange="saveSettings()">
+            <option value="2160">4K — 2160p</option>
+            <option value="1440">1440p</option>
+            <option value="1080" selected>1080p HD</option>
+            <option value="720">720p</option>
+          </select>
+        </div>
+        <div class="card settings-card">
+          <div class="card-label"><i class="ti ti-device-desktop"></i> Concurrent Downloads</div>
+          <select class="sel" id="concurrentSel" onchange="saveSettings()">
+            <option value="1">1 at a time</option>
+            <option value="2" selected>2 at a time</option>
+            <option value="3">3 at a time</option>
+            <option value="5">5 at a time</option>
+          </select>
+        </div>
+        <div class="card settings-card">
+          <div class="card-label"><i class="ti ti-info-circle"></i> About</div>
+          <p style="font-size:13px;color:var(--txt2);line-height:1.6">
+            YT Downloader uses <strong>yt-dlp</strong> for downloading and <strong>FFmpeg</strong> for merging/converting.
+            Make sure FFmpeg is installed and in your PATH.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/socket.io@4.7.2/dist/socket.io.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
