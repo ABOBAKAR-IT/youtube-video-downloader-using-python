@@ -801,3 +801,29 @@ body {
   .options-row { flex-direction: column; }
   .settings-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Progress chips (speed, eta, pct) ────────────────────── */
+.speed-chip {
+  font-size: 11px;
+  color: var(--txt2);
+  font-family: var(--font-mono);
+}
+.eta-chip {
+  font-size: 11px;
+  color: var(--txt2);
+  font-family: var(--font-mono);
+}
+.pct-chip {
+  font-size: 11px;
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+.error-msg {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--red-text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}

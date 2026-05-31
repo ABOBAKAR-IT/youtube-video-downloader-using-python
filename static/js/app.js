@@ -1,48 +1,61 @@
 /* ═══════════════════════════════════════════════════════════
-   YT Downloader — Frontend App
-   Connects to Flask backend via REST + Socket.IO
+   YT Downloader — Frontend
+   Uses SSE (EventSource) for live progress — no Socket.IO
    ═══════════════════════════════════════════════════════════ */
 
 "use strict";
 
-// ── State ─────────────────────────────────────────────────────
-let jobs        = {};   // job_id → job object
-let mediaType   = "video";
-let infoCache   = null; // last fetched info
+// ── State ──────────────────────────────────────────────────────
+let jobs      = {};   // job_id → job object
+let mediaType = "video";
+let infoCache = null;
 
-// ── Socket.IO ─────────────────────────────────────────────────
-const socket = io({ transports: ["websocket", "polling"] });
+// ── SSE Connection ─────────────────────────────────────────────
+let evtSource = null;
 
-socket.on("connect", () => {
-  setConn("online", "Connected");
-});
+function connectSSE() {
+  if (evtSource) evtSource.close();
 
-socket.on("disconnect", () => {
-  setConn("offline", "Disconnected");
-});
+  evtSource = new EventSource("/api/stream");
 
-socket.on("connect_error", () => {
-  setConn("error", "Connection error");
-});
+  evtSource.onopen = () => {
+    setConn("online", "Connected");
+  };
 
-socket.on("progress", (data) => {
-  if (!data.job_id) return;
-  const job = jobs[data.job_id];
-  if (!job) return;
+  evtSource.addEventListener("progress", (e) => {
+    const data = JSON.parse(e.data);
+    if (!data.id) return;
 
-  Object.assign(job, data);
-  renderItem(job);
-  updateStats();
-});
+    const isNew = !jobs[data.id];
+    jobs[data.id] = data;
 
-function setConn(state, label) {
-  const dot   = document.getElementById("conn-dot");
-  const lbl   = document.getElementById("conn-label");
-  dot.className = `conn-dot ${state}`;
-  lbl.textContent = label;
+    if (isNew) {
+      appendItem(data);
+    } else {
+      renderItem(data);
+    }
+    updateStats();
+  });
+
+  evtSource.onerror = () => {
+    setConn("offline", "Reconnecting…");
+    // Browser auto-reconnects EventSource — we just update the label
+    setTimeout(() => {
+      if (evtSource.readyState === EventSource.CLOSED) {
+        connectSSE();
+      }
+    }, 3000);
+  };
 }
 
-// ── Navigation ────────────────────────────────────────────────
+connectSSE();
+
+function setConn(state, label) {
+  document.getElementById("conn-dot").className  = `conn-dot ${state}`;
+  document.getElementById("conn-label").textContent = label;
+}
+
+// ── Navigation ─────────────────────────────────────────────────
 document.querySelectorAll(".nav-item").forEach(el => {
   el.addEventListener("click", e => {
     e.preventDefault();
@@ -55,7 +68,7 @@ document.querySelectorAll(".nav-item").forEach(el => {
   });
 });
 
-// ── URL helpers ───────────────────────────────────────────────
+// ── URL helpers ────────────────────────────────────────────────
 function clearUrl() {
   document.getElementById("urlInput").value = "";
   hideInfoPreview();
@@ -73,7 +86,7 @@ function hideInfoPreview() {
   document.getElementById("infoPreview").classList.add("hidden");
 }
 
-// ── Fetch Info ────────────────────────────────────────────────
+// ── Fetch Info ─────────────────────────────────────────────────
 async function fetchInfo() {
   const url = document.getElementById("urlInput").value.trim();
   if (!url) { toast("Paste a URL first", "error"); return; }
@@ -89,9 +102,7 @@ async function fetchInfo() {
       body: JSON.stringify({ url }),
     });
     const data = await res.json();
-
     if (data.error) { toast(data.error, "error"); return; }
-
     infoCache = data;
     showInfoPreview(data);
   } catch (err) {
@@ -103,10 +114,8 @@ async function fetchInfo() {
 }
 
 function showInfoPreview(info) {
-  const wrap = document.getElementById("infoPreview");
-  wrap.classList.remove("hidden");
-
-  document.getElementById("infoThumb").src = info.thumbnail || "";
+  document.getElementById("infoPreview").classList.remove("hidden");
+  document.getElementById("infoThumb").src       = info.thumbnail || "";
   document.getElementById("infoTitle").textContent = info.title || "";
   document.getElementById("infoUploader").textContent = info.uploader || "";
   document.getElementById("infoDuration").textContent =
@@ -122,11 +131,9 @@ function showInfoPreview(info) {
     countEl.style.display = "none";
   }
 
-  // Quality chips
   const qDiv = document.getElementById("infoQualities");
   qDiv.innerHTML = "";
-  const quals = info.available_qualities || [];
-  quals.forEach(q => {
+  (info.available_qualities || []).forEach(q => {
     const chip = document.createElement("span");
     chip.className = "q-chip";
     chip.textContent = `${q}p`;
@@ -139,7 +146,7 @@ function showInfoPreview(info) {
   });
 }
 
-// ── Add Download ──────────────────────────────────────────────
+// ── Add Download ───────────────────────────────────────────────
 async function addDownload() {
   const url = document.getElementById("urlInput").value.trim();
   if (!url) { toast("Paste a YouTube URL first", "error"); return; }
@@ -147,28 +154,25 @@ async function addDownload() {
   const quality   = document.getElementById("qualSel").value;
   const subtitles = document.getElementById("chkSubs").checked;
   const thumbnail = document.getElementById("chkThumb").checked;
-  const isPlaylist = url.includes("list=") || url.includes("playlist");
 
-  // If playlist info cached, queue each entry individually
   if (infoCache && infoCache.type === "playlist" && infoCache.entries?.length) {
     for (const entry of infoCache.entries) {
       await queueJob({
-        url:        entry.url,
-        title:      entry.title,
-        quality,
-        type:       mediaType,
-        subtitles,
-        thumbnail,
-        is_playlist: false,
-        duration:   entry.duration,
+        url:           entry.url,
+        title:         entry.title,
+        quality, subtitles, thumbnail,
+        duration:      entry.duration,
         thumbnail_url: infoCache.thumbnail,
       });
     }
     toast(`Queued ${infoCache.entries.length} videos`, "success");
   } else {
-    const title = infoCache?.title || url;
-    const thumb = infoCache?.thumbnail || "";
-    await queueJob({ url, title, quality, type: mediaType, subtitles, thumbnail, is_playlist: isPlaylist, thumbnail_url: thumb });
+    await queueJob({
+      url,
+      title:         infoCache?.title || url,
+      quality, subtitles, thumbnail,
+      thumbnail_url: infoCache?.thumbnail || "",
+    });
     toast("Added to queue");
   }
 
@@ -185,47 +189,36 @@ async function queueJob(params) {
     });
     const data = await res.json();
     if (data.error) { toast(data.error, "error"); return; }
-
-    const job = {
-      id:           data.job_id,
-      url:          params.url,
-      title:        params.title || params.url,
-      quality:      params.quality || "1080",
-      type:         params.type || "video",
-      status:       "queued",
-      progress:     0,
-      speed:        "",
-      eta:          "",
-      thumbnail_url: params.thumbnail_url || "",
-      duration:     params.duration || null,
-    };
-
-    jobs[data.job_id] = job;
-    appendItem(job);
-    updateStats();
-    document.getElementById("dlAllBtn").disabled = false;
+    // SSE will push the job state back — no need to manually track here
   } catch (err) {
     toast("Error: " + err.message, "error");
   }
 }
 
-// ── Download All ──────────────────────────────────────────────
 function downloadAll() {
-  // Backend already starts downloads automatically; this is a no-op
-  // but you could batch-start paused jobs here
   toast("All queued jobs are running", "success");
 }
 
-// ── Render Queue Items ────────────────────────────────────────
+// ── Render ─────────────────────────────────────────────────────
 function showQueue() {
-  document.getElementById("emptyState").style.display = Object.keys(jobs).length ? "none" : "block";
+  const count = Object.keys(jobs).length;
+  document.getElementById("emptyState").style.display = count ? "none" : "block";
+  document.getElementById("dlAllBtn").disabled = count === 0;
 }
 
 function appendItem(job) {
   document.getElementById("emptyState").style.display = "none";
+  document.getElementById("dlAllBtn").disabled = false;
+
+  // Don't duplicate
+  if (document.getElementById(`item-${job.id}`)) {
+    renderItem(job);
+    return;
+  }
+
   const el = document.createElement("div");
-  el.className = "item";
   el.id = `item-${job.id}`;
+  el.className = "item";
   document.getElementById("queue").prepend(el);
   renderItem(job);
   updateQueueCount();
@@ -235,70 +228,70 @@ function renderItem(job) {
   const el = document.getElementById(`item-${job.id}`);
   if (!el) return;
 
-  el.className = `item ${job.status === "downloading" ? "downloading" : job.status === "done" ? "done" : job.status === "error" ? "error" : ""}`;
+  const pct   = job.progress || 0;
+  const st    = job.status || "queued";
 
-  const pct     = job.progress || 0;
-  const fillCls = job.status === "done" ? "done" : job.status === "error" ? "error" : "";
-  const badgeCls = `badge-${job.status || "queue"}`;
+  el.className = `item ${st === "downloading" ? "downloading" : st === "done" ? "done" : st === "error" ? "error" : ""}`;
 
-  const badgeLabel = {
-    queued:      "Queued",
-    fetching:    "Fetching…",
-    downloading: "Downloading",
-    processing:  "Processing…",
-    done:        "Complete",
-    error:       "Error",
-  }[job.status] || "Queued";
+  const LABELS = {
+    queued: "Queued", fetching: "Fetching…", downloading: "Downloading",
+    processing: "Merging…", done: "Complete", error: "Error",
+  };
+  const BADGE = {
+    queued: "badge-queue", fetching: "badge-fetching",
+    downloading: "badge-downloading", processing: "badge-processing",
+    done: "badge-done", error: "badge-error",
+  };
 
-  const spinnerOrIcon =
-    job.status === "downloading" || job.status === "fetching" || job.status === "processing"
+  const icon =
+    (st === "downloading" || st === "fetching" || st === "processing")
       ? `<span class="spinner"></span>`
-      : job.status === "done"
+      : st === "done"
       ? `<i class="ti ti-check" style="color:var(--green);font-size:13px"></i>`
-      : job.status === "error"
+      : st === "error"
       ? `<i class="ti ti-alert-circle" style="color:var(--red);font-size:13px"></i>`
       : `<i class="ti ti-clock" style="font-size:13px;color:var(--txt3)"></i>`;
 
   const thumbHtml = job.thumbnail_url
-    ? `<div class="item-thumb"><img src="${escHtml(job.thumbnail_url)}" alt="" loading="lazy" /></div>`
+    ? `<div class="item-thumb"><img src="${escHtml(job.thumbnail_url)}" alt="" loading="lazy"/></div>`
     : `<div class="item-thumb"><i class="ti ti-video"></i></div>`;
 
   const durationChip = job.duration
     ? `<span class="meta-chip"><i class="ti ti-clock"></i> ${fmtDuration(job.duration)}</span>`
     : "";
 
-  const formatChip = job.type === "audio"
+  const fmtChip = job.type === "audio"
     ? `<span class="meta-chip"><i class="ti ti-music"></i> MP3</span>`
-    : `<span class="meta-chip"><i class="ti ti-video"></i> MP4 ${job.quality}p</span>`;
+    : `<span class="meta-chip"><i class="ti ti-video"></i> MP4 ${job.quality || "1080"}p</span>`;
 
-  const errorMsg = job.status === "error" && job.error
-    ? `<div style="font-size:12px;color:var(--red-text);margin-top:6px"><i class="ti ti-alert-triangle"></i> ${escHtml(job.error)}</div>`
-    : "";
+  // Only show progress bar once downloading starts
+  const showBar = st !== "queued";
 
-  const progressHtml = job.status !== "queued" ? `
+  const progressHtml = showBar ? `
     <div class="progress-wrap">
       <div class="progress-meta">
         <div class="progress-left">
-          ${spinnerOrIcon}
-          <span class="badge ${badgeCls}">${badgeLabel}</span>
-          ${job.speed ? `<span style="font-size:11px;color:var(--txt2)">${escHtml(job.speed)}</span>` : ""}
+          ${icon}
+          <span class="badge ${BADGE[st] || "badge-queue"}">${LABELS[st] || st}</span>
+          ${job.speed ? `<span class="speed-chip">${escHtml(job.speed)}</span>` : ""}
         </div>
         <div class="progress-right">
-          ${job.eta ? `<span>ETA ${escHtml(job.eta)}</span>` : ""}
-          <span>${pct}%</span>
+          ${job.eta  ? `<span class="eta-chip">${escHtml(job.eta)}</span>` : ""}
+          <span class="pct-chip">${pct}%</span>
         </div>
       </div>
       <div class="progress-track">
-        <div class="progress-fill ${fillCls}" style="width:${pct}%"></div>
+        <div class="progress-fill ${st === "done" ? "done" : st === "error" ? "error" : ""}"
+             style="width:${pct}%"></div>
       </div>
-      ${errorMsg}
+      ${st === "error" && job.error
+        ? `<div class="error-msg"><i class="ti ti-alert-triangle"></i> ${escHtml(job.error)}</div>`
+        : ""}
     </div>` : "";
 
-  const openBtn = job.status === "done"
-    ? `<button class="icon-btn" title="Open folder" onclick="toast('File saved to ./downloads/')">
-         <i class="ti ti-folder-open"></i>
-       </button>`
-    : "";
+  const openBtn = st === "done"
+    ? `<button class="icon-btn" title="Saved to ./downloads/" onclick="toast('Saved to ./downloads/ folder')">
+         <i class="ti ti-folder-open"></i></button>` : "";
 
   el.innerHTML = `
     <div class="item-top">
@@ -307,8 +300,7 @@ function renderItem(job) {
         <div class="item-title" title="${escHtml(job.title)}">${escHtml(job.title)}</div>
         <div class="item-meta">
           ${durationChip}
-          ${formatChip}
-          <span class="meta-chip"><i class="ti ti-id"></i> ${escHtml(job.id.slice(0,8))}</span>
+          ${fmtChip}
         </div>
       </div>
       <div class="item-actions">
@@ -318,14 +310,12 @@ function renderItem(job) {
         </button>
       </div>
     </div>
-    ${progressHtml}
-  `;
+    ${progressHtml}`;
 }
 
 async function removeJob(id) {
   delete jobs[id];
-  const el = document.getElementById(`item-${id}`);
-  if (el) el.remove();
+  document.getElementById(`item-${id}`)?.remove();
   updateStats();
   updateQueueCount();
   if (!Object.keys(jobs).length) {
@@ -341,11 +331,12 @@ function clearDone() {
   });
 }
 
-// ── Stats ─────────────────────────────────────────────────────
+// ── Stats ──────────────────────────────────────────────────────
 function updateStats() {
   const all    = Object.values(jobs);
   const done   = all.filter(j => j.status === "done").length;
-  const active = all.filter(j => j.status === "downloading" || j.status === "fetching" || j.status === "processing").length;
+  const active = all.filter(j =>
+    ["downloading","fetching","processing"].includes(j.status)).length;
 
   document.getElementById("ss-total").textContent  = all.length;
   document.getElementById("ss-done").textContent   = done;
@@ -359,13 +350,13 @@ function updateQueueCount() {
   document.getElementById("dlAllBtn").disabled = count === 0;
 }
 
-// ── Files View ────────────────────────────────────────────────
+// ── Files View ─────────────────────────────────────────────────
 async function loadFiles() {
   const container = document.getElementById("filesList");
   container.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--txt3)"><span class="spinner"></span></div>`;
 
   try {
-    const res  = await fetch("/api/files");
+    const res   = await fetch("/api/files");
     const files = await res.json();
 
     if (!files.length) {
@@ -383,69 +374,61 @@ async function loadFiles() {
         <a class="btn btn-ghost btn-sm" href="${f.url}" download>
           <i class="ti ti-download"></i> Save
         </a>
-      </div>
-    `).join("");
-  } catch (err) {
-    container.innerHTML = `<div class="empty-state"><i class="ti ti-alert-circle"></i><p>Failed to load files</p></div>`;
+      </div>`).join("");
+  } catch {
+    container.innerHTML = `<div class="empty-state"><i class="ti ti-alert-circle"></i><p>Failed to load</p></div>`;
   }
 }
 
-// ── Settings ──────────────────────────────────────────────────
+// ── Settings ───────────────────────────────────────────────────
 function saveSettings() {
-  const q = document.getElementById("defaultQual").value;
-  document.getElementById("qualSel").value = q;
+  document.getElementById("qualSel").value = document.getElementById("defaultQual").value;
   toast("Settings saved");
 }
 
-// ── Utilities ─────────────────────────────────────────────────
-function fmtDuration(secs) {
-  if (!secs) return "";
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  if (h) return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-  return `${m}:${String(s).padStart(2,"0")}`;
+// ── Utils ──────────────────────────────────────────────────────
+function fmtDuration(s) {
+  if (!s) return "";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+  return h
+    ? `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`
+    : `${m}:${String(sec).padStart(2,"0")}`;
 }
 
 function fmtNumber(n) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
-  return String(n);
+  return n >= 1e6 ? (n/1e6).toFixed(1)+"M" : n >= 1e3 ? (n/1e3).toFixed(1)+"K" : String(n);
 }
 
-function fmtSize(bytes) {
-  if (bytes >= 1_073_741_824) return (bytes / 1_073_741_824).toFixed(2) + " GB";
-  if (bytes >= 1_048_576)     return (bytes / 1_048_576).toFixed(1) + " MB";
-  if (bytes >= 1_024)         return (bytes / 1_024).toFixed(0) + " KB";
-  return bytes + " B";
+function fmtSize(b) {
+  return b >= 1073741824 ? (b/1073741824).toFixed(2)+" GB"
+       : b >= 1048576    ? (b/1048576).toFixed(1)+" MB"
+       : b >= 1024       ? (b/1024).toFixed(0)+" KB"
+       : b+" B";
 }
 
-function escHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-let toastTimer;
+let _toastTimer;
 function toast(msg, type = "") {
   const el = document.getElementById("toast");
   el.textContent = msg;
   el.className = `toast ${type} show`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 3000);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 3000);
 }
 
-// ── Enter key on URL input ────────────────────────────────────
+// ── Keyboard & paste shortcuts ─────────────────────────────────
 document.getElementById("urlInput").addEventListener("keydown", e => {
   if (e.key === "Enter") addDownload();
 });
 
-// Paste auto-fetch info
 document.getElementById("urlInput").addEventListener("paste", () => {
   setTimeout(() => {
     const url = document.getElementById("urlInput").value.trim();
     if (url.includes("youtube.com") || url.includes("youtu.be")) fetchInfo();
-  }, 50);
+  }, 60);
 });
