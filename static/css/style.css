@@ -827,3 +827,21 @@ body {
   align-items: center;
   gap: 5px;
 }
+
+/* ── Playlist number badge ────────────────────────────────── */
+.num-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--red-light);
+  color: var(--red-text);
+  border-radius: 6px;
+  padding: 1px 7px;
+  margin-right: 7px;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}

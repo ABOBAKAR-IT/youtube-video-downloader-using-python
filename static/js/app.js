@@ -156,16 +156,20 @@ async function addDownload() {
   const thumbnail = document.getElementById("chkThumb").checked;
 
   if (infoCache && infoCache.type === "playlist" && infoCache.entries?.length) {
-    for (const entry of infoCache.entries) {
+    const total = infoCache.entries.length;
+    for (let i = 0; i < total; i++) {
+      const entry = infoCache.entries[i];
       await queueJob({
-        url:           entry.url,
-        title:         entry.title,
+        url:            entry.url,
+        title:          entry.title,
         quality, subtitles, thumbnail,
-        duration:      entry.duration,
-        thumbnail_url: infoCache.thumbnail,
+        duration:       entry.duration,
+        thumbnail_url:  infoCache.thumbnail,
+        playlist_index: i + 1,
+        playlist_total: total,
       });
     }
-    toast(`Queued ${infoCache.entries.length} videos`, "success");
+    toast(`Queued ${total} videos`, "success");
   } else {
     await queueJob({
       url,
@@ -293,11 +297,16 @@ function renderItem(job) {
     ? `<button class="icon-btn" title="Saved to ./downloads/" onclick="toast('Saved to ./downloads/ folder')">
          <i class="ti ti-folder-open"></i></button>` : "";
 
+  // Playlist number badge shown in the queue card
+  const numBadge = job.playlist_index != null && job.playlist_total != null
+    ? `<span class="num-badge">${String(job.playlist_index).padStart(String(job.playlist_total).length, "0")}/${job.playlist_total}</span>`
+    : "";
+
   el.innerHTML = `
     <div class="item-top">
       ${thumbHtml}
       <div class="item-info">
-        <div class="item-title" title="${escHtml(job.title)}">${escHtml(job.title)}</div>
+        <div class="item-title" title="${escHtml(job.title)}">${numBadge}${escHtml(job.title)}</div>
         <div class="item-meta">
           ${durationChip}
           ${fmtChip}

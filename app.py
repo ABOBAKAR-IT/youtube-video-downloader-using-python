@@ -92,13 +92,23 @@ def sse_stream():
 
 # ── Download logic ─────────────────────────────────────────────
 def build_ydl_opts(job: dict) -> dict:
-    quality   = job.get("quality", "1080")
-    dl_type   = job.get("type", "video")
-    subs      = job.get("subtitles", False)
-    thumbnail = job.get("thumbnail", False)
-    job_id    = job["id"]
+    quality        = job.get("quality", "1080")
+    dl_type        = job.get("type", "video")
+    subs           = job.get("subtitles", False)
+    thumbnail      = job.get("thumbnail", False)
+    job_id         = job["id"]
+    playlist_index = job.get("playlist_index")   # e.g. 1, 2, 3 ...
+    playlist_total = job.get("playlist_total")   # e.g. 28
 
-    out_tmpl = str(DOWNLOAD_DIR / "%(title)s [%(id)s].%(ext)s")
+    # Build filename prefix: "01 - ", "02 - " ... pads to match total length
+    # e.g. 28 videos → "01 - ", 100 videos → "001 - "
+    if playlist_index is not None and playlist_total is not None:
+        pad = len(str(playlist_total))          # 28 → 2 digits, 100 → 3 digits
+        prefix = str(playlist_index).zfill(pad) + " - "
+    else:
+        prefix = ""
+
+    out_tmpl = str(DOWNLOAD_DIR / f"{prefix}%(title)s [%(id)s].%(ext)s")
 
     if dl_type == "audio":
         fmt = "bestaudio/best"
@@ -286,21 +296,25 @@ def start_download():
         return jsonify({"error": "No URL provided"}), 400
 
     job_id = str(uuid.uuid4())
+    playlist_index = data.get("playlist_index")
+    playlist_total = data.get("playlist_total")
     job = {
-        "id":          job_id,
-        "url":         url,
-        "title":       data.get("title", url),
-        "quality":     str(data.get("quality", "1080")),
-        "type":        data.get("type", "video"),
-        "subtitles":   bool(data.get("subtitles", False)),
-        "thumbnail":   bool(data.get("thumbnail", False)),
-        "status":      "queued",
-        "progress":    0,
-        "speed":       "",
-        "eta":         "",
-        "error":       "",
-        "thumbnail_url": data.get("thumbnail_url", ""),
-        "duration":    data.get("duration"),
+        "id":             job_id,
+        "url":            url,
+        "title":          data.get("title", url),
+        "quality":        str(data.get("quality", "1080")),
+        "type":           data.get("type", "video"),
+        "subtitles":      bool(data.get("subtitles", False)),
+        "thumbnail":      bool(data.get("thumbnail", False)),
+        "status":         "queued",
+        "progress":       0,
+        "speed":          "",
+        "eta":            "",
+        "error":          "",
+        "thumbnail_url":  data.get("thumbnail_url", ""),
+        "duration":       data.get("duration"),
+        "playlist_index": int(playlist_index) if playlist_index is not None else None,
+        "playlist_total": int(playlist_total) if playlist_total is not None else None,
     }
 
     with jobs_lock:
