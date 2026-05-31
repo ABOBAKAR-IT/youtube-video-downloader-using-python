@@ -10,7 +10,6 @@ import uuid
 import threading
 import queue
 import json
-import time
 from pathlib import Path
 
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response, stream_with_context
@@ -24,18 +23,30 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "yt-dl-secret-key"
 
-# jobs dict: job_id → job state
+# ── Concurrency control ────────────────────────────────────────
+# User can change via /api/settings. Default = 2.
+_concurrent_limit = 2
+_semaphore        = threading.Semaphore(_concurrent_limit)
+_semaphore_lock   = threading.Lock()
+
+def set_concurrent(n: int):
+    """Replace the global semaphore with a new one (safe between jobs)."""
+    global _semaphore, _concurrent_limit
+    n = max(1, min(5, n))
+    with _semaphore_lock:
+        _concurrent_limit = n
+        _semaphore = threading.Semaphore(n)
+
+# ── Jobs & SSE subscribers ─────────────────────────────────────
 jobs: dict[str, dict] = {}
 jobs_lock = threading.Lock()
 
-# SSE broadcast: list of subscriber queues
 subscribers: list[queue.Queue] = []
 subscribers_lock = threading.Lock()
 
 
 # ── SSE broadcast ──────────────────────────────────────────────
 def broadcast(event: str, data: dict):
-    """Push an SSE event to every connected browser tab."""
     msg = f"event: {event}\ndata: {json.dumps(data)}\n\n"
     with subscribers_lock:
         dead = []
@@ -50,26 +61,25 @@ def broadcast(event: str, data: dict):
 
 @app.route("/api/stream")
 def sse_stream():
-    """Browser connects here to receive live progress updates."""
     q = queue.Queue(maxsize=200)
     with subscribers_lock:
         subscribers.append(q)
 
     def generate():
-        # Send all current job states immediately on connect
+        # Send current state + settings on connect
         with jobs_lock:
             current = list(jobs.values())
         for job in current:
             yield f"event: progress\ndata: {json.dumps(job)}\n\n"
+        yield f"event: settings\ndata: {json.dumps({'concurrent': _concurrent_limit})}\n\n"
 
-        # Keep connection alive, stream updates
         try:
             while True:
                 try:
                     msg = q.get(timeout=20)
                     yield msg
                 except queue.Empty:
-                    yield ": heartbeat\n\n"   # keep-alive ping
+                    yield ": heartbeat\n\n"
         except GeneratorExit:
             pass
         finally:
@@ -83,11 +93,26 @@ def sse_stream():
         stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering":"no",
+            "Connection":       "keep-alive",
         },
     )
+
+
+# ── Settings API ───────────────────────────────────────────────
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify({"concurrent": _concurrent_limit})
+
+
+@app.route("/api/settings", methods=["POST"])
+def update_settings():
+    data = request.get_json(force=True)
+    n    = int(data.get("concurrent", _concurrent_limit))
+    set_concurrent(n)
+    broadcast("settings", {"concurrent": _concurrent_limit})
+    return jsonify({"ok": True, "concurrent": _concurrent_limit})
 
 
 # ── Download logic ─────────────────────────────────────────────
@@ -97,13 +122,12 @@ def build_ydl_opts(job: dict) -> dict:
     subs           = job.get("subtitles", False)
     thumbnail      = job.get("thumbnail", False)
     job_id         = job["id"]
-    playlist_index = job.get("playlist_index")   # e.g. 1, 2, 3 ...
-    playlist_total = job.get("playlist_total")   # e.g. 28
+    playlist_index = job.get("playlist_index")
+    playlist_total = job.get("playlist_total")
 
-    # Build filename prefix: "01 - ", "02 - " ... pads to match total length
-    # e.g. 28 videos → "01 - ", 100 videos → "001 - "
+    # Numbered prefix: "01 - ", "02 - " etc.
     if playlist_index is not None and playlist_total is not None:
-        pad = len(str(playlist_total))          # 28 → 2 digits, 100 → 3 digits
+        pad    = len(str(playlist_total))
         prefix = str(playlist_index).zfill(pad) + " - "
     else:
         prefix = ""
@@ -138,28 +162,16 @@ def build_ydl_opts(job: dict) -> dict:
             pct        = int(downloaded / total * 100) if total else 0
             speed      = d.get("speed") or 0
             eta        = d.get("eta") or 0
-
             update = {
                 "status":   "downloading",
                 "progress": pct,
                 "speed":    f"{speed / 1_048_576:.1f} MB/s" if speed else "—",
                 "eta":      f"{eta}s" if eta < 60 else f"{eta // 60}m {eta % 60}s",
             }
-
         elif status == "finished":
-            update = {
-                "status":   "processing",
-                "progress": 99,
-                "speed":    "",
-                "eta":      "Merging…",
-            }
-
+            update = {"status": "processing", "progress": 99, "speed": "", "eta": "Merging…"}
         elif status == "error":
-            update = {
-                "status": "error",
-                "progress": 0,
-                "error": str(d.get("error", "Unknown error")),
-            }
+            update = {"status": "error", "progress": 0, "error": str(d.get("error", "Unknown"))}
 
         if update:
             with jobs_lock:
@@ -174,7 +186,7 @@ def build_ydl_opts(job: dict) -> dict:
         "progress_hooks":      [progress_hook],
         "postprocessors":      postprocessors,
         "merge_output_format": "mp4" if dl_type == "video" else None,
-        "noplaylist":          True,   # each job is one video URL
+        "noplaylist":          True,
         "quiet":               True,
         "no_warnings":         True,
         "ignoreerrors":        True,
@@ -187,7 +199,6 @@ def build_ydl_opts(job: dict) -> dict:
             "writeautomaticsub": True,
             "subtitleslangs":    ["en"],
         })
-
     if thumbnail:
         opts["writethumbnail"] = True
 
@@ -195,32 +206,76 @@ def build_ydl_opts(job: dict) -> dict:
 
 
 def run_download(job_id: str):
+    """Runs in a background thread. Waits for semaphore slot before starting."""
+    # Show as "waiting" if all slots are busy
     with jobs_lock:
-        job = dict(jobs[job_id])
-
-    # Mark as downloading
-    with jobs_lock:
-        jobs[job_id]["status"] = "downloading"
-        jobs[job_id]["progress"] = 0
-        payload = dict(jobs[job_id])
+        if jobs.get(job_id, {}).get("status") == "queued":
+            jobs[job_id]["status"] = "waiting"
+            payload = dict(jobs[job_id])
     broadcast("progress", payload)
 
-    try:
-        opts = build_ydl_opts(job)
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([job["url"]])
-
+    with _semaphore:   # ← blocks until a slot is free
         with jobs_lock:
-            jobs[job_id].update({"status": "done", "progress": 100, "speed": "", "eta": ""})
+            if job_id not in jobs:
+                return   # was deleted while waiting
+            job = dict(jobs[job_id])
+            jobs[job_id]["status"]   = "downloading"
+            jobs[job_id]["progress"] = 0
             payload = dict(jobs[job_id])
         broadcast("progress", payload)
 
-    except Exception as exc:
-        err = str(exc)
-        with jobs_lock:
-            jobs[job_id].update({"status": "error", "error": err, "progress": 0})
-            payload = dict(jobs[job_id])
-        broadcast("progress", payload)
+        try:
+            opts = build_ydl_opts(job)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([job["url"]])
+
+            # Find the saved filename to attach a download URL
+            saved_file = _find_saved_file(job_id, job)
+
+            with jobs_lock:
+                jobs[job_id].update({
+                    "status":    "done",
+                    "progress":  100,
+                    "speed":     "",
+                    "eta":       "",
+                    "file_url":  f"/downloads/{saved_file}" if saved_file else "",
+                    "file_name": saved_file or "",
+                })
+                payload = dict(jobs[job_id])
+            broadcast("progress", payload)
+
+        except Exception as exc:
+            err = str(exc)
+            with jobs_lock:
+                jobs[job_id].update({"status": "error", "error": err, "progress": 0})
+                payload = dict(jobs[job_id])
+            broadcast("progress", payload)
+
+
+def _find_saved_file(job_id: str, job: dict) -> str:
+    """
+    After yt-dlp finishes, find the file it saved so we can give the user
+    a direct download link. We match by scanning the downloads folder for
+    files modified in the last 5 minutes that contain the video ID.
+    """
+    import time
+    now = time.time()
+    video_id = job.get("url", "").split("v=")[-1].split("&")[0][:11]
+
+    best = None
+    for f in DOWNLOAD_DIR.iterdir():
+        if not f.is_file():
+            continue
+        # Modified within last 5 min
+        if now - f.stat().st_mtime > 300:
+            continue
+        # Matches video ID or recent file (fallback)
+        if video_id and video_id in f.name:
+            return f.name
+        if best is None or f.stat().st_mtime > best.stat().st_mtime:
+            best = f
+
+    return best.name if best else ""
 
 
 # ── REST API ───────────────────────────────────────────────────
@@ -238,10 +293,8 @@ def get_info():
 
     try:
         opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": "in_playlist",
-            "skip_download": True,
+            "quiet": True, "no_warnings": True,
+            "extract_flat": "in_playlist", "skip_download": True,
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -295,9 +348,10 @@ def start_download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    job_id = str(uuid.uuid4())
+    job_id         = str(uuid.uuid4())
     playlist_index = data.get("playlist_index")
     playlist_total = data.get("playlist_total")
+
     job = {
         "id":             job_id,
         "url":            url,
@@ -311,6 +365,8 @@ def start_download():
         "speed":          "",
         "eta":            "",
         "error":          "",
+        "file_url":       "",
+        "file_name":      "",
         "thumbnail_url":  data.get("thumbnail_url", ""),
         "duration":       data.get("duration"),
         "playlist_index": int(playlist_index) if playlist_index is not None else None,
@@ -343,6 +399,7 @@ def delete_job(job_id):
 
 @app.route("/downloads/<path:filename>")
 def serve_download(filename):
+    """Serve file to user's browser as a download (works from remote server too)."""
     return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=True)
 
 
@@ -363,6 +420,5 @@ def list_files():
 # ── Entry point ────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7000))
-    print(f"\n🎬  YT Downloader running at http://localhost:{port}\n")
-    # threaded=True is essential — SSE keeps a connection open per browser tab
+    print(f"\n🎬  YT Downloader  →  http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

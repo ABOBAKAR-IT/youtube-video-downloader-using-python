@@ -845,3 +845,90 @@ body {
   letter-spacing: 0.3px;
   vertical-align: middle;
 }
+
+/* ── Waiting state ─────────────────────────────────────────── */
+.item.waiting {
+  border-color: var(--amber-bg);
+  opacity: 0.85;
+}
+.badge-waiting { background: var(--amber-bg); color: var(--amber-text); }
+
+/* ── Save to PC button ─────────────────────────────────────── */
+.save-btn {
+  color: var(--green-text) !important;
+  border-color: rgba(99,153,34,.4) !important;
+  text-decoration: none;
+}
+.save-btn:hover {
+  background: var(--green-bg) !important;
+  color: var(--green-text) !important;
+}
+
+/* ── Settings page ─────────────────────────────────────────── */
+.settings-desc {
+  font-size: 12px;
+  color: var(--txt2);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.settings-desc code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg3);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Concurrent download buttons */
+.concurrent-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.concurrent-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r);
+  border: 0.5px solid var(--border2);
+  background: var(--bg2);
+  color: var(--txt);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.concurrent-btn:hover { background: var(--bg3); }
+.concurrent-btn.active {
+  background: var(--red);
+  color: white;
+  border-color: var(--red);
+}
+.concurrent-label {
+  font-size: 13px;
+  color: var(--txt2);
+  margin-bottom: 8px;
+}
+.ram-hint {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 5px 10px;
+  background: var(--bg3);
+  border-radius: var(--r);
+  color: var(--txt3);
+  display: inline-block;
+}
+
+/* My Files — Download to PC button */
+.btn-primary.btn-sm {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  background: var(--red);
+  color: white;
+  border-color: var(--red);
+}
+.btn-primary.btn-sm:hover { background: var(--red-h); }

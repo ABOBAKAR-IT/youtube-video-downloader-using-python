@@ -188,38 +188,47 @@
     <div id="view-settings" class="view">
       <div class="page-header"><h2>Settings</h2></div>
       <div class="settings-grid">
+
         <div class="card settings-card">
-          <div class="card-label"><i class="ti ti-folder"></i> Download Folder</div>
-          <div class="settings-row">
-            <div class="settings-path" id="dlPath">./downloads/</div>
-            <button class="btn btn-ghost btn-sm" onclick="alert('Change folder not available in browser mode.')">Browse</button>
+          <div class="card-label"><i class="ti ti-stack-2"></i> Concurrent Downloads</div>
+          <p class="settings-desc">How many videos download at the same time. Lower = less RAM used on server.</p>
+          <div class="concurrent-row">
+            <button class="concurrent-btn" onclick="setConcurrent(1)">1</button>
+            <button class="concurrent-btn" onclick="setConcurrent(2)">2</button>
+            <button class="concurrent-btn" onclick="setConcurrent(3)">3</button>
+            <button class="concurrent-btn" onclick="setConcurrent(4)">4</button>
+            <button class="concurrent-btn" onclick="setConcurrent(5)">5</button>
           </div>
+          <div class="concurrent-label">Currently: <span id="concurrentDisplay">2</span> at a time</div>
+          <input type="hidden" id="concurrentSel" value="2" />
+          <div class="ram-hint" id="ramHint">~250–350 MB RAM estimated</div>
         </div>
+
         <div class="card settings-card">
           <div class="card-label"><i class="ti ti-adjustments"></i> Default Quality</div>
-          <select class="sel" id="defaultQual" onchange="saveSettings()">
+          <p class="settings-desc">Applied to new downloads. Does not affect jobs already in queue.</p>
+          <select class="sel" id="defaultQual" onchange="applyDefaultQual()">
             <option value="2160">4K — 2160p</option>
             <option value="1440">1440p</option>
             <option value="1080" selected>1080p HD</option>
             <option value="720">720p</option>
+            <option value="480">480p</option>
           </select>
         </div>
+
         <div class="card settings-card">
-          <div class="card-label"><i class="ti ti-device-desktop"></i> Concurrent Downloads</div>
-          <select class="sel" id="concurrentSel" onchange="saveSettings()">
-            <option value="1">1 at a time</option>
-            <option value="2" selected>2 at a time</option>
-            <option value="3">3 at a time</option>
-            <option value="5">5 at a time</option>
-          </select>
+          <div class="card-label"><i class="ti ti-folder"></i> Server Storage</div>
+          <p class="settings-desc">Downloaded files are stored on the server. Use <strong>My Files</strong> tab to download them to your PC.</p>
+          <div class="settings-path">./downloads/</div>
         </div>
+
         <div class="card settings-card">
           <div class="card-label"><i class="ti ti-info-circle"></i> About</div>
-          <p style="font-size:13px;color:var(--txt2);line-height:1.6">
-            YT Downloader uses <strong>yt-dlp</strong> for downloading and <strong>FFmpeg</strong> for merging/converting.
-            Make sure FFmpeg is installed and in your PATH.
+          <p class="settings-desc">
+            Uses <strong>yt-dlp</strong> for downloading and <strong>FFmpeg</strong> for merging/converting. Keep yt-dlp updated: <code>pip install -U yt-dlp</code>
           </p>
         </div>
+
       </div>
     </div>
 
