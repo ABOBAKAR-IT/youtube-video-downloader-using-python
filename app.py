@@ -327,10 +327,13 @@ def get_info():
              "--no-warnings",
              "--ignore-errors",          # skip private/deleted videos
              "--yes-playlist",           # force full playlist extraction
+             "--extractor-retries", "10",       # YouTube playlist continuation pages
+             "--retry-sleep", "extractor:exp=1:30",  # intermittently return "Incomplete
+             "--socket-timeout", "30",          # data received" — retry harder/longer
              url],
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
 
         raw = proc.stdout.strip()
@@ -350,6 +353,8 @@ def get_info():
                 "type":      "playlist",
                 "title":     info.get("title", "Playlist"),
                 "count":     len(entries),
+                "playlist_count": info.get("playlist_count"),
+                "stderr":    proc.stderr.strip()[-4000:] if proc.stderr else "",
                 "uploader":  info.get("uploader") or info.get("channel", ""),
                 "thumbnail": info.get("thumbnail", ""),
                 "entries": [
