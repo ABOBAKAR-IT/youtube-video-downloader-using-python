@@ -73,7 +73,10 @@ document.querySelectorAll(".nav-item").forEach(el => {
 function clearUrl() {
   document.getElementById("urlInput").value = "";
   document.getElementById("infoPreview").classList.add("hidden");
-  infoCache = null;
+  document.getElementById("playlistPanel").style.display = "none";
+  _plEntries = [];
+  _pickedSet = new Set();
+  infoCache  = null;
 }
 
 function setType(t) {
@@ -121,11 +124,17 @@ function showInfoPreview(info) {
     info.view_count ? `👁 ${fmtNumber(info.view_count)}` : "";
 
   const countEl = document.getElementById("infoCount");
+  const panel   = document.getElementById("playlistPanel");
+
   if (info.type === "playlist") {
     countEl.textContent = `${info.count} videos`;
     countEl.style.display = "inline";
+    // Show and initialise the playlist selection panel
+    panel.style.display = "block";
+    initPlaylistPanel(info.entries || []);
   } else {
     countEl.style.display = "none";
+    panel.style.display   = "none";
   }
 
   const qDiv = document.getElementById("infoQualities");
@@ -143,35 +152,221 @@ function showInfoPreview(info) {
   });
 }
 
-// ── Add Download ───────────────────────────────────────────────
-async function addDownload() {
-  const url = document.getElementById("urlInput").value.trim();
-  if (!url) { toast("Paste a YouTube URL first", "error"); return; }
+// ── Playlist Panel ──────────────────────────────────────────────
+
+let _plEntries   = [];   // full entries array from infoCache
+let _plTab       = "range"; // "range" | "pick"
+let _pickedSet   = new Set(); // indices (0-based) of picked videos in pick mode
+
+function initPlaylistPanel(entries) {
+  _plEntries = entries;
+  _pickedSet = new Set(entries.map((_, i) => i)); // all selected by default
+  _plTab     = "range";
+
+  // Reset tabs
+  switchPlTab("range");
+
+  // Set range inputs to full playlist range
+  const total = entries.length;
+  const fromEl = document.getElementById("rangeFrom");
+  const toEl   = document.getElementById("rangeTo");
+  fromEl.value = "1";
+  fromEl.min   = "1";
+  fromEl.max   = total;
+  toEl.value   = String(total);
+  toEl.min     = "1";
+  toEl.max     = total;
+
+  // Show max hint beside "To" label
+  const hintEl = document.getElementById("rangeMaxHint");
+  if (hintEl) hintEl.textContent = `(max ${total})`;
+
+  // Show total in range preview
+  const totalLabelEl = document.getElementById("rangeTotalLabel");
+  if (totalLabelEl) totalLabelEl.textContent = total;
+
+  updateRangePreview();
+
+  // Build video checklist
+  buildVideoList(entries);
+  updatePickCount();
+  updateFooter();
+}
+
+function switchPlTab(tab) {
+  _plTab = tab;
+  document.getElementById("tabRange").classList.toggle("active", tab === "range");
+  document.getElementById("tabPick").classList.toggle("active",  tab === "pick");
+  document.getElementById("plContentRange").classList.toggle("active", tab === "range");
+  document.getElementById("plContentPick").classList.toggle("active",  tab === "pick");
+  updateFooter();
+}
+
+// ── Range tab ──────────────────────────────────────────────────
+
+function updateRangePreview() {
+  const total  = _plEntries.length;
+  let from = parseInt(document.getElementById("rangeFrom").value) || 1;
+  let to   = parseInt(document.getElementById("rangeTo").value)   || total;
+
+  // Clamp to valid range
+  from = Math.max(1, Math.min(from, total));
+  to   = Math.max(from, Math.min(to, total));
+
+  // Enforce clamped values back into inputs
+  document.getElementById("rangeFrom").value = from;
+  document.getElementById("rangeTo").value   = to;
+
+  const count = to - from + 1;
+  document.getElementById("rangeCountLabel").textContent = count;
+
+  // Keep total label in sync
+  const totalLabelEl = document.getElementById("rangeTotalLabel");
+  if (totalLabelEl) totalLabelEl.textContent = total;
+
+  updateFooter();
+}
+
+function getRangeSelected() {
+  const total = _plEntries.length;
+  let from = parseInt(document.getElementById("rangeFrom").value) || 1;
+  let to   = parseInt(document.getElementById("rangeTo").value)   || total;
+  from = Math.max(1, Math.min(from, total));
+  to   = Math.max(from, Math.min(to, total));
+  // entries are 0-indexed; from/to are 1-indexed
+  return _plEntries.slice(from - 1, to).map((e, localIdx) => ({
+    entry: e,
+    playlistIndex: from + localIdx,  // 1-based position in the full playlist
+    playlistTotal: total,
+  }));
+}
+
+// ── Pick Videos tab ───────────────────────────────────────────
+
+function buildVideoList(entries) {
+  const list = document.getElementById("plVideoList");
+  list.innerHTML = "";
+  entries.forEach((e, i) => {
+    const row = document.createElement("label");
+    row.className = `pl-video-item${_pickedSet.has(i) ? " checked" : ""}`;
+    row.innerHTML = `
+      <input type="checkbox" ${_pickedSet.has(i) ? "checked" : ""} data-idx="${i}" />
+      <span class="pl-video-index">${String(i + 1).padStart(String(entries.length).length, "0")}</span>
+      <span class="pl-video-title" title="${escHtml(e.title)}">${escHtml(e.title)}</span>
+      <span class="pl-video-dur">${e.duration ? fmtDuration(e.duration) : ""}</span>`;
+    row.querySelector("input").addEventListener("change", ev => {
+      const idx = parseInt(ev.target.dataset.idx);
+      if (ev.target.checked) { _pickedSet.add(idx); row.classList.add("checked"); }
+      else                   { _pickedSet.delete(idx); row.classList.remove("checked"); }
+      updatePickCount();
+      updateFooter();
+    });
+    list.appendChild(row);
+  });
+}
+
+function plSelectAll() {
+  _pickedSet = new Set(_plEntries.map((_, i) => i));
+  document.querySelectorAll("#plVideoList input[type=checkbox]").forEach(cb => {
+    cb.checked = true;
+    cb.closest(".pl-video-item")?.classList.add("checked");
+  });
+  updatePickCount();
+  updateFooter();
+}
+
+function plDeselectAll() {
+  _pickedSet.clear();
+  document.querySelectorAll("#plVideoList input[type=checkbox]").forEach(cb => {
+    cb.checked = false;
+    cb.closest(".pl-video-item")?.classList.remove("checked");
+  });
+  updatePickCount();
+  updateFooter();
+}
+
+function updatePickCount() {
+  document.getElementById("pickCountLabel").textContent = `${_pickedSet.size} selected`;
+}
+
+function getPickSelected() {
+  const total = _plEntries.length;
+  return [..._pickedSet].sort((a, b) => a - b).map(i => ({
+    entry: _plEntries[i],
+    playlistIndex: i + 1,
+    playlistTotal: total,
+  }));
+}
+
+// ── Footer ─────────────────────────────────────────────────────
+
+function updateFooter() {
+  const items = getSelectedEntries();
+  const count = items.length;
+  document.getElementById("plFooterCount").textContent = count;
+  document.getElementById("plFooterTotal").textContent = _plEntries.length;
+  document.getElementById("btnDownloadSel").disabled   = count === 0;
+}
+
+function getSelectedEntries() {
+  if (_plTab === "range") return getRangeSelected();
+  return getPickSelected();
+}
+
+// ── Download Selected ──────────────────────────────────────────
+
+async function downloadSelected() {
+  const selection = getSelectedEntries();
+  if (!selection.length) { toast("No videos selected", "error"); return; }
 
   const quality   = document.getElementById("qualSel").value;
   const subtitles = document.getElementById("chkSubs").checked;
   const thumbnail = document.getElementById("chkThumb").checked;
 
-  if (infoCache?.type === "playlist" && infoCache.entries?.length) {
-    const total = infoCache.entries.length;
-    for (let i = 0; i < total; i++) {
-      const e = infoCache.entries[i];
-      await queueJob({
-        url: e.url, title: e.title, quality, subtitles, thumbnail,
-        duration: e.duration, thumbnail_url: infoCache.thumbnail,
-        playlist_index: i + 1, playlist_total: total,
-      });
-    }
-    toast(`Queued ${total} videos`, "success");
-  } else {
+  const btn = document.getElementById("btnDownloadSel");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Queuing…`;
+
+  let queued = 0;
+  for (const { entry: e, playlistIndex, playlistTotal } of selection) {
     await queueJob({
-      url,
-      title:         infoCache?.title || url,
-      quality, subtitles, thumbnail,
-      thumbnail_url: infoCache?.thumbnail || "",
+      url: e.url, title: e.title, quality, subtitles, thumbnail,
+      duration: e.duration, thumbnail_url: infoCache?.thumbnail || "",
+      playlist_index: playlistIndex, playlist_total: playlistTotal,
     });
-    toast("Added to queue");
+    queued++;
   }
+
+  btn.disabled = false;
+  btn.innerHTML = `<i class="ti ti-download"></i> Download Selected`;
+
+  toast(`Queued ${queued} video${queued !== 1 ? "s" : ""}`, "success");
+  clearUrl();
+  showQueue();
+}
+
+// ── Add Download (keeps working for single videos) ─────────────
+async function addDownload() {
+  const url = document.getElementById("urlInput").value.trim();
+  if (!url) { toast("Paste a YouTube URL first", "error"); return; }
+
+  // For playlists, delegate to downloadSelected()
+  if (infoCache?.type === "playlist" && infoCache.entries?.length) {
+    await downloadSelected();
+    return;
+  }
+
+  const quality   = document.getElementById("qualSel").value;
+  const subtitles = document.getElementById("chkSubs").checked;
+  const thumbnail = document.getElementById("chkThumb").checked;
+
+  await queueJob({
+    url,
+    title:         infoCache?.title || url,
+    quality, subtitles, thumbnail,
+    thumbnail_url: infoCache?.thumbnail || "",
+  });
+  toast("Added to queue");
   clearUrl();
   showQueue();
 }

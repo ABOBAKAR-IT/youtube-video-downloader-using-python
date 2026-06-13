@@ -286,38 +286,80 @@ def index():
 
 @app.route("/api/info", methods=["POST"])
 def get_info():
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
     data = request.get_json(force=True)
     url  = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    # ── Normalise URL ──────────────────────────────────────────
+    # If the URL has a playlist ID (list=…) rewrite it as a pure
+    # playlist URL so yt-dlp doesn't resolve the v= param first
+    # and only return a single video.
     try:
-        opts = {
-            "quiet": True, "no_warnings": True,
-            "extract_flat": "in_playlist", "skip_download": True,
-        }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        parsed = urlparse(url)
+        qs     = parse_qs(parsed.query, keep_blank_values=True)
+        list_id = qs.get("list", [None])[0]
+        if list_id and ("youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc):
+            url = f"https://www.youtube.com/playlist?list={list_id}"
+    except Exception:
+        pass  # leave url unchanged if parsing fails
+
+    try:
+        import subprocess, shutil, sys, os
+
+        # ── Find the yt-dlp binary ─────────────────────────────
+        # Derive from sys.executable so we always use the venv's own yt-dlp,
+        # even if the shell did not activate the venv before starting Flask.
+        _bin_dir  = os.path.dirname(sys.executable)
+        _venv_bin = os.path.join(_bin_dir, "yt-dlp")
+        ytdlp_bin = _venv_bin if os.path.isfile(_venv_bin) else (shutil.which("yt-dlp") or "yt-dlp")
+
+        # ── Run yt-dlp as a subprocess ─────────────────────────
+        # --flat-playlist -J  →  dump full playlist JSON including ALL entries.
+        # The CLI paginates through every YouTube page (past the 100-item limit)
+        # whereas the Python API's extract_flat stops at the first page boundary.
+        proc = subprocess.run(
+            [ytdlp_bin,
+             "--flat-playlist",          # metadata only, no download
+             "-J",                       # dump single JSON to stdout
+             "--no-warnings",
+             "--ignore-errors",          # skip private/deleted videos
+             "--yes-playlist",           # force full playlist extraction
+             url],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        raw = proc.stdout.strip()
+        if not raw:
+            err = proc.stderr.strip()[:500] if proc.stderr else "No output from yt-dlp"
+            return jsonify({"error": err}), 500
+
+        info = json.loads(raw)
 
         if not info:
             return jsonify({"error": "Could not fetch info"}), 400
 
         if info.get("_type") == "playlist" or "entries" in info:
-            entries = info.get("entries") or []
+            # Filter out None / private / deleted entries
+            entries = [e for e in (info.get("entries") or []) if e]
             return jsonify({
                 "type":      "playlist",
                 "title":     info.get("title", "Playlist"),
                 "count":     len(entries),
-                "uploader":  info.get("uploader", ""),
+                "uploader":  info.get("uploader") or info.get("channel", ""),
                 "thumbnail": info.get("thumbnail", ""),
                 "entries": [
                     {
                         "id":       e.get("id", ""),
-                        "title":    e.get("title", f"Video {i+1}"),
+                        "title":    e.get("title") or f"Video {i+1}",
                         "duration": e.get("duration"),
                         "url":      e.get("url") or f"https://www.youtube.com/watch?v={e.get('id','')}",
                     }
-                    for i, e in enumerate(entries) if e
+                    for i, e in enumerate(entries)
                 ],
             })
 

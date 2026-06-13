@@ -932,3 +932,277 @@ body {
   border-color: var(--red);
 }
 .btn-primary.btn-sm:hover { background: var(--red-h); }
+
+/* ── Playlist Selection Panel ──────────────────────────────── */
+.playlist-panel {
+  margin-top: 14px;
+  background: var(--bg2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--rl);
+  overflow: hidden;
+  animation: fadeIn .2s ease;
+}
+
+/* Tab bar */
+.pl-tabs {
+  display: flex;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--bg);
+}
+
+.pl-tab {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--txt2);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: all .15s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -0.5px;
+  font-family: var(--font-sans);
+}
+
+.pl-tab i { font-size: 15px; }
+
+.pl-tab:hover {
+  background: var(--bg2);
+  color: var(--txt);
+}
+
+.pl-tab.active {
+  color: var(--red-text);
+  border-bottom-color: var(--red);
+  background: var(--bg2);
+}
+
+/* Tab content areas */
+.pl-tab-content { display: none; padding: 16px; }
+.pl-tab-content.active { display: block; }
+
+/* ── Range Tab ─────────────────────────────────────────────── */
+.pl-range-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pl-range-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pl-range-field label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--txt3);
+}
+
+.pl-range-input {
+  width: 90px;
+  height: 38px;
+  padding: 0 10px;
+  font-size: 14px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  background: var(--bg);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--r);
+  color: var(--txt);
+  outline: none;
+  text-align: center;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.pl-range-input:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(226,75,74,.1);
+}
+
+.pl-range-sep {
+  font-size: 18px;
+  color: var(--txt3);
+  padding-top: 18px;
+  font-weight: 300;
+  user-select: none;
+}
+
+.pl-range-preview {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--txt2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-range-preview .range-count {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--red-text);
+  background: var(--red-light);
+  padding: 1px 9px;
+  border-radius: 8px;
+}
+
+/* ── Pick Videos Tab ──────────────────────────────────────── */
+.pl-pick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.pl-pick-count {
+  font-size: 12px;
+  color: var(--txt2);
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+.btn-pl-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  border-radius: var(--r);
+  border: 0.5px solid var(--border2);
+  background: var(--bg);
+  color: var(--txt2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .12s;
+  white-space: nowrap;
+}
+
+.btn-pl-sm:hover { background: var(--bg3); color: var(--txt); }
+.btn-pl-sm i { font-size: 13px; }
+
+.pl-video-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg);
+}
+
+.pl-video-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background .12s;
+  border-bottom: 0.5px solid var(--border);
+  user-select: none;
+}
+
+.pl-video-item:last-child { border-bottom: none; }
+.pl-video-item:hover { background: var(--bg2); }
+.pl-video-item.checked { background: var(--red-light); }
+
+.pl-video-item input[type="checkbox"] {
+  accent-color: var(--red);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pl-video-index {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--txt3);
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.pl-video-title {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--txt);
+}
+
+.pl-video-dur {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--txt3);
+  flex-shrink: 0;
+}
+
+/* ── Sticky action footer ─────────────────────────────────── */
+.pl-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 0.5px solid var(--border);
+  background: var(--bg);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pl-footer-count {
+  font-size: 13px;
+  color: var(--txt2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pl-footer-count strong {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--txt);
+}
+
+.btn-download-sel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 20px;
+  height: 38px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  background: var(--red);
+  color: white;
+  border: none;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.btn-download-sel:hover:not(:disabled) { background: var(--red-h); }
+.btn-download-sel:active:not(:disabled) { transform: scale(0.97); }
+.btn-download-sel:disabled { opacity: .4; cursor: default; }
+.btn-download-sel i { font-size: 15px; }
+
+/* Scrollbar inside video list */
+.pl-video-list::-webkit-scrollbar { width: 5px; }
+.pl-video-list::-webkit-scrollbar-track { background: transparent; }
+.pl-video-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }

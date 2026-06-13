@@ -102,6 +102,63 @@
           </div>
         </div>
 
+        <!-- Playlist Selection Panel (shown only for playlists) -->
+        <div id="playlistPanel" class="playlist-panel" style="display:none;">
+          <!-- Tab bar -->
+          <div class="pl-tabs">
+            <button class="pl-tab active" id="tabRange" onclick="switchPlTab('range')">
+              <i class="ti ti-arrows-left-right"></i> Select Range
+            </button>
+            <button class="pl-tab" id="tabPick" onclick="switchPlTab('pick')">
+              <i class="ti ti-checkbox"></i> Pick Videos
+            </button>
+          </div>
+
+          <!-- Range tab content -->
+          <div class="pl-tab-content active" id="plContentRange">
+            <div class="pl-range-row">
+              <div class="pl-range-field">
+                <label for="rangeFrom">From</label>
+                <input class="pl-range-input" id="rangeFrom" type="number" min="1" value="1" oninput="updateRangePreview()" />
+              </div>
+              <div class="pl-range-sep">→</div>
+              <div class="pl-range-field">
+                <label for="rangeTo">To <span id="rangeMaxHint" style="font-weight:400;opacity:0.55;font-size:0.78em;"></span></label>
+                <input class="pl-range-input" id="rangeTo" type="number" min="1" value="1" oninput="updateRangePreview()" />
+              </div>
+            </div>
+            <div class="pl-range-preview">
+              <span class="range-count" id="rangeCountLabel">0</span>
+              <span>of <span id="rangeTotalLabel">0</span> videos selected</span>
+            </div>
+          </div>
+
+          <!-- Pick Videos tab content -->
+          <div class="pl-tab-content" id="plContentPick">
+            <div class="pl-pick-actions">
+              <button class="btn-pl-sm" onclick="plSelectAll()">
+                <i class="ti ti-select-all"></i> Select All
+              </button>
+              <button class="btn-pl-sm" onclick="plDeselectAll()">
+                <i class="ti ti-square"></i> Deselect All
+              </button>
+              <span class="pl-pick-count" id="pickCountLabel">0 selected</span>
+            </div>
+            <div class="pl-video-list" id="plVideoList"></div>
+          </div>
+
+          <!-- Footer -->
+          <div class="pl-footer">
+            <div class="pl-footer-count">
+              <strong id="plFooterCount">0</strong>
+              <span>of <span id="plFooterTotal">0</span> videos selected</span>
+            </div>
+            <button class="btn-download-sel" id="btnDownloadSel" onclick="downloadSelected()" disabled>
+              <i class="ti ti-download"></i> Download Selected
+            </button>
+          </div>
+        </div>
+
         <!-- Options row -->
         <div class="options-row">
           <div class="opt-group">
